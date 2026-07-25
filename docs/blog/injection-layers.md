@@ -4,7 +4,7 @@
 
 Personal AI assistants that ingest email and chat face a different risk profile than chatbots with empty context. **Untrusted text is a continuous input.** If the agent also keeps **persistent memory** or can take **actions**, a successful injection is not a funny one-off — it is a durable compromise.
 
-This note summarizes the layered approach documented in the [Pi security architecture](../docs/security-architecture.md). It is for authorized defensive design on systems you own.
+This note summarizes the layered approach documented in the [Pi security architecture](../security-architecture.md). It is for authorized defensive design on systems you own.
 
 ## The failure that matters
 
