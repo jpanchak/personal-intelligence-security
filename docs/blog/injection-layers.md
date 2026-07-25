@@ -6,6 +6,8 @@ Personal AI assistants that ingest email and chat face a different risk profile 
 
 This note summarizes the layered approach documented in the [Pi security architecture](../security-architecture.md). It is for authorized defensive design on systems you own.
 
+**Read this as design, not as a shipped-feature list.** In my own build, L0 and the owner-channel half of L3 are enforced in shipped schema and code; L1, L2, L4, and L5 are specified and phased. The architecture doc marks each one. I am writing about the shape of the problem and the ordering I chose, not claiming a finished system.
+
 ## The failure that matters
 
 Classic demo: “ignore previous instructions.”  
@@ -33,7 +35,7 @@ Quarantined items write **no** behavioral memory.
 This single rule kills an entire class of “always forward my mail to attacker@…” poisons without needing a perfect scanner.
 
 ### L4 — Action-origin checks
-Ingested content may be the **object** of an action (“archive this mail”) but never the **author** of one (“send a wire”). Provenance is checked in code.
+Ingested content may be the **object** of an action (“archive this mail”) but never the **author** of one (“send a wire”). The schema makes an ingested instruction origin unrepresentable; the executor that enforces it is a later phase.
 
 ### L5 — Answer-time labeling and strips
 Show warnings for flagged/quarantined retrieval. Deterministic output checks catch probe leakage.

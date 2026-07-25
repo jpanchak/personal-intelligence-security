@@ -6,7 +6,7 @@ This repository publishes the **defensive security design** for that system — 
 
 > **Author:** Jonathan Panchak  
 > **Focus:** AI systems security · prompt-injection containment · local encryption · least-privilege cloud inference  
-> **Status:** Architecture and core storage/security foundations implemented in a private build; this repo is the public, sanitized security surface.
+> **Status:** Storage, encryption, key custody, and backup/DR foundations are implemented and drilled in a private build. The injection-containment, permission, and evaluation layers above them are specified and phased. This repo publishes the design and marks which parts are enforced today.
 
 ---
 
@@ -41,18 +41,32 @@ Pi’s most valuable asset is not any single model answer — it is the **persis
 
 ---
 
-## Design highlights
+## Design highlights — and what is actually enforced
 
-- **Trust taxonomy at ingest** — owner channel vs ingested content vs assistant output; trust is not upgraded by heuristics.  
-- **Structural data/instruction separation** — untrusted text enters prompts only inside hardened envelopes.  
-- **Write-path injection scanning** — deterministic checks + model classifier; fail-closed on scanner errors.  
-- **Deterministic memory-write gate** — preferences/skills only from the authenticated owner channel; quarantined items cannot teach behavioral memory.  
-- **Action-origin checks** — ingested content may be the *object* of an action, never the *author* of one.  
-- **Application-layer encryption** for stores Pi controls; platform disk encryption as defense-in-depth.  
-- **Daemon-enforced egress allowlist** — default deny for outbound network from the process that holds keys and corpus access.  
-- **Least-privilege cloud inference** — pinned models/routes; retention-mode fail-closed where applicable; no training-on-customer-data path by design.  
-- **Client-side-encrypted offsite backup** — only ciphertext leaves the device for disaster recovery.  
-- **Eval harness includes injection-resistance probes** — planted adversarial content must not be obeyed; quarantine remains citable containment, not silent drop.
+Pi is built in phases. This repository documents the **whole** security design, so the honest thing is to mark the line between what runs today and what is specified. Publishing an architecture is easy; the split below is the part worth scrutinising.
+
+### Enforced in the current build
+
+- **Application-layer encryption across every store Pi controls** — page-level authenticated encryption for the primary database; per-object AES-256-GCM for the blob and raw-artifact tiers, content-addressed, with crypto-shred by deleting key material. Raw source bytes are encrypted *before* parse. Platform disk encryption is defense-in-depth, not the control.
+- **Key custody bound to code identity** — data-encryption keys live in platform secure storage, never beside the database. Key access is bound to a signed daemon identity, so a generic interpreter ACL cannot inherit it. First-run key generation is fail-closed if the identity check does not pass.
+- **Trust taxonomy (L0)** — origin trust is a database CHECK constraint, not a convention; stream/trust combinations that should be impossible are structurally rejected. No heuristic can upgrade trust.
+- **Owner-channel rule for behavioral memory (L3, first half)** — preferences and skills are writable only from the authenticated owner channel. The gate is deterministic and evaluated *inside* the writing transaction against live rows, so a spoofed identifier cannot slip past.
+- **Append-only action log** — update and delete abort at the storage layer by trigger, not by convention.
+- **Client-side-encrypted offsite backup** — only ciphertext leaves the device, pushed daily under the signed daemon; backup credentials are separate principals from anything else.
+- **Drilled disaster recovery** — the recovery bundle has been restore-confirmed on a host holding neither the signing identity nor the key, and the offsite repository has been pulled back and opened under the data key. Dates and scope in [`docs/security-architecture.md`](./docs/security-architecture.md) §3.4.
+
+### Specified and phased — not yet enforced
+
+- Structural data/instruction separation at prompt time (L1)
+- Write-path injection scanning, deterministic checks and classifier (L2)
+- The *write-time* quarantine block (L3's second half — retroactive quarantine propagation is built and oracle-tested; the pre-write gate is not)
+- Action-origin checks (L4) — the schema makes an ingested instruction origin unrepresentable; the executor does not exist
+- Answer-time labeling and strips (L5)
+- The permission evaluator — tables and triggers exist; grant matching and scope enforcement do not
+- A runtime egress hostname allowlist — default-deny is currently enforced statically, see §6
+- The evaluation harness and its injection-resistance probes — a release gate. **No pass-rate data is published because no run has occurred.**
+
+The current build registers **zero** tools of any kind and has made **zero** model calls. Nothing above is yet load-bearing for a live personal corpus — which is the point of building the storage and recovery floor first.
 
 ---
 

@@ -28,6 +28,8 @@ Security is load-bearing because:
 
 Ranking criterion: **(likelihood of attempt) × (damage durability)**.
 
+The "primary controls" column describes the **designed** control set for each threat. Which of those controls are enforced in the current build — and which are specified and phased — is marked in §4 (injection), §5 (permissions), §6 (network), and §7 (cloud). T2, T7, and T8 are covered by controls that are implemented and, in the recovery case, drilled; T1's control stack is mostly still ahead of the build.
+
 | ID | Threat | Primary controls | Residual (accepted, stated) |
 |---|---|---|---|
 | **T1** | Indirect prompt injection via ingested content → memory poisoning / action hijack | Trust taxonomy; structural data/instruction separation; write-path scanning; deterministic memory-write gate; action-origin checks; answer-time handling; harness probes | Novel scanner bypass still faces structural + deterministic layers; model obedience under adversarial framing remains the weakest layer |
@@ -65,8 +67,8 @@ Every personal-data byte **Pi’s own stores** write is protected with **applica
 An offline recovery bundle exists so a dead machine is not permanent loss. Design properties:
 
 - Secrets in the bundle are wrapped under a passphrase-derived key (memory-hard KDF + authenticated encryption).  
-- Disaster recovery is drilled; a never-restored backup is treated as a hypothesis.  
-- Where offsite backup exists, escrowed restore credentials are scoped **read-only** and rotated on re-export so a leaked kit cannot delete the sole offsite copy.
+- **Disaster recovery is drilled, not assumed.** Two owner-run drills are on record: the recovery bundle has been restore-confirmed on a host holding neither the signing identity nor the key, and the offsite repository has been pushed, pulled back, and opened under the data key end-to-end. *Scope, stated plainly:* both drills ran against a pre-ingestion store, and the "clean host" was a separate account on the same machine. A full new-machine, full-corpus drill is a release gate, not a completed one. A never-restored backup is treated as a hypothesis.  
+- Escrowed restore credentials are scoped **read-only** and rotated on re-export, so a leaked kit cannot delete the sole offsite copy. The read-write backup principal is never escrowed.
 
 ### 3.5 Honest plaintext exceptions
 
@@ -79,6 +81,8 @@ Publishing the general shape of this exception is deliberate — a security docu
 ## 4. Injection quarantine (L0–L5)
 
 Injection is treated as **unsolved**. The claim is defense-in-depth + deterministic gates + continuous probes—not perfection.
+
+> **Enforcement status of this section.** L0 is enforced in shipped schema. L3's owner-channel rule is enforced in shipped code. **L1, L2, L4, and L5 are specified and phased — they are not running.** L4's schema already makes an ingested instruction origin unrepresentable, but no executor exists to be constrained. The layers below are written as design; each one notes where enforcement actually lives.
 
 ### L0 — Trust taxonomy (structural)
 
@@ -118,13 +122,13 @@ Verdict lattice (conceptual): `none < flagged < quarantined`, combining determin
 
 ### L3 — Memory-write gate (hardest deterministic line)
 
-| State | Memory effect |
-|---|---|
-| `quarantined` | **Zero** facts/preferences/skills/entity links written from the item; item remains stored and retrievable *with warning* |
-| `flagged` | Extraction may proceed with taint; sensitive profile surfaces exclude unconfirmed rows |
-| any | **Preferences and skills are only ever written from the owner channel** |
+| State | Memory effect | Enforcement today |
+|---|---|---|
+| `quarantined` | **Zero** facts/preferences/skills/entity links written from the item; item remains stored and retrievable *with warning* | **Partial.** Retroactive quarantine propagation is built and oracle-tested — a later verdict sweeps derived rows, with an explicit false-positive override path. The *pre-write* block is specified, not built |
+| `flagged` | Extraction may proceed with taint; sensitive profile surfaces exclude unconfirmed rows | Specified |
+| any | **Preferences and skills are only ever written from the owner channel** | **Enforced.** Deterministic, evaluated inside the writing transaction against live rows, so a spoofed identifier cannot slip past |
 
-That last rule closes the highest-damage class (“always forward mail to X”) without depending on scanner quality.
+That last rule closes the highest-damage class (“always forward mail to X”) without depending on scanner quality — which is precisely why it was built first, before any scanner exists.
 
 ### L4 — Action-origin check
 
@@ -136,11 +140,13 @@ Flagged/quarantined retrieval is labeled in context and UI. Deterministic stripp
 
 ### Eval posture
 
-An evaluation harness plants injection probes (fresh nonces) and checks:
+The eval design treats injection resistance as a graded category. Probes are planted with fresh nonces each run, and the checks are:
 
-- Model does not obey planted instructions  
+- Model does not obey planted instructions — graded on **raw, pre-L5-strip** model output, so the deterministic strip cannot launder a failure into a pass  
 - No actions spawn from planted lineage  
 - Quarantined content remains **findable and citable** as untrusted—containment, not silent deletion  
+
+**Status: specified, never run.** The harness is a release gate and does not yet exist. No pass-rate data is published here because none has been produced — the build has made zero model calls to date. A security document that quoted eval numbers it did not have would be the exact failure this section is meant to guard against.
 
 **Honesty clause:** layers raise attacker cost; they do not make injection impossible. Residual risk concentrates at L1 (model obedience); that is why L3/L4 are code.
 
@@ -148,13 +154,15 @@ An evaluation harness plants injection probes (fresh nonces) and checks:
 
 ## 5. Permission system
 
-Design mirrors strict tool-permission systems used in agentic coding products:
+> **Enforcement status:** the tables, constraints, and append-only triggers below exist in the shipped schema. The **evaluator does not** — grant matching, scope enforcement, and the `ask`/`auto` flow ship with the actions phase. The current build registers zero tools, so there is nothing to evaluate yet. The design is described in the present tense; only the schema-level items are enforced today.
+
+Design follows the default-deny, structured-grant pattern that agentic coding assistants have made publicly documented practice (Claude Code's permission model is the closest public reference):
 
 - **Default deny**  
 - Grants are structured (tool, action class, scope, mode `ask`|`auto`, constraints)  
 - Evaluation is **deterministic**—the model proposes; the evaluator disposes  
 - “Always allow” mints a grant scoped to **exactly** what was shown—never silently wider  
-- Escalation mid-workflow is impossible by construction (authorizing grant/approval must predate execution)  
+- Escalation mid-workflow is designed to be structurally unavailable: every executed action must name an authorizing grant or approval that predates the run. The schema enforces exactly one authorizer per action today; the precedence check itself is a timestamp comparison over the action log, verified at the release gate rather than by a code invariant — so this is a design property with a planned test, not a proven one  
 - Dangerous classes are structurally absent where possible (e.g. OAuth scopes that exclude permanent mass-delete)  
 - Action log is **append-only**; blocked attempts log too  
 - v1 can ship full permission machinery while registering **zero** write-capable tools until each path is verified  
@@ -165,12 +173,11 @@ Design mirrors strict tool-permission systems used in agentic coding products:
 
 ### 6.1 Daemon egress allowlist
 
-The daemon is the only process intended to speak to the internet on Pi’s behalf. Outbound HTTP(S) flows through one egress module:
+The daemon is the only process intended to speak to the internet on Pi’s behalf.
 
-- **Default deny**  
-- Hostname allowlist evaluated before connect  
-- Lint/architecture rules ban ad-hoc `fetch`/net usage elsewhere  
-- Blocked attempts are visible as bugs or attacks  
+**Enforced today.** Default-deny is a static architecture rule with test coverage on its own bypasses. Every network core module (`http`, `https`, `http2`, `net`, `tls`, `dgram`, `dns`), the `fetch` global, `WebSocket`, `XMLHttpRequest`, and `sendBeacon` are banned repository-wide outside a single sanctioned path — static import, dynamic import, and `require` alike. Phase gates are verified by packet capture against the running daemon, so the claim is checked empirically rather than asserted.
+
+**Specified, not yet enforced.** The runtime hostname allowlist — evaluated before connect, default deny, blocked attempts surfaced as bugs or attacks — ships with the first network-bearing connector. Until then the accurate description of this control is *"no code path can reach the network except one,"* not *"every destination is checked before connect."* The distinction matters and is not papered over here.
 
 Allowlisted destinations are limited to what the product truly needs, for example (categories, not a live inventory):
 
@@ -204,9 +211,11 @@ Goals:
 3. **Pin** which models/routes exist; make disallowed models unroutable in code.  
 4. Separate **interactive** answering routes from **bulk** classification/extraction routes.  
 5. **Fail closed** if retention posture drifts from the required mode.  
-6. Least-privilege IAM: invoke only pinned models; deny retention-mode mutation from the app principal; dedicated principals for backup vs inference.  
+6. Least-privilege cloud access policy: invoke only pinned models; deny retention-mode mutation from the app principal; dedicated principals for backup vs inference.  
 
 Routing selection is deterministic and model-free where possible (classify turn → route key → pinned model id) so policy is testable without spending tokens.
+
+**Enforcement status.** The pinned route map and its guards are shipped code: a request naming a disallowed model throws rather than degrading, non-pinned providers are denied by default, and the cheap tier is structurally barred from answering the owner directly. Retention posture is enforced as a fail-closed *precondition* — the required account mode was verified out-of-band, routing refuses to arm on any other value, and the daemon refuses to arm at all while the automated check is unconfigured, so an unrun probe cannot be silently defaulted past. **What is not yet in place:** nothing queries the provider to confirm retention mode at runtime, and the least-privilege access policy is drafted but not attached — account work to date has run from a broad administrative principal. Both land with the first live inference path. Until then, "least privilege" describes the routing layer, not the cloud principal.
 
 ---
 
@@ -221,9 +230,9 @@ Routing selection is deterministic and model-free where possible (classify turn 
 Properties:
 
 - Snapshot integrity gates (format checks, keyed open, DB integrity)  
-- Scheduled restore verification  
+- **Scheduled restore verification**, monthly and scheduler-driven: restore from the offsite repository → keyed open → integrity check → recompute per-stream row counts and recency against the manifest recorded at snapshot time. The check is deliberately non-vacuous and that property is test-proven — tampered, zero-byte, and wrong-key inputs each fail at the correct stage rather than passing trivially. Installed and exercised; the recurring cadence is young  
 - Offsite holds **ciphertext only**  
-- Backup credentials scoped to backup storage—not inference  
+- Backup credentials scoped to backup storage—not inference, and split into separate read-write and read-only principals  
 
 ---
 
@@ -274,6 +283,7 @@ Security-relevant acceptance themes (illustrative):
 
 - This public document is **derived** from a more detailed internal model used to build the private implementation.  
 - When internal and public docs diverge, **mechanisms** described here should remain accurate; only operational detail is withheld.  
+- **Enforcement claims were audited against the private build on 2026-07-25**, and several were narrowed as a result — the egress control, the retention check, the permission evaluator, and the eval harness were all described more strongly than the code warranted. They now state what runs. If you find a remaining claim that outruns the implementation, that is a bug in this document and worth reporting.  
 - Corrections and design critiques welcome via the process in [`../SECURITY.md`](../SECURITY.md).
 
 ---
