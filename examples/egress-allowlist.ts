@@ -43,18 +43,22 @@ function safeHostname(url: string): string {
   return u.hostname.toLowerCase();
 }
 
-/** Example policy for a fictional local-first assistant — not live Pi inventory. */
+/**
+ * Example policy for a fictional local-first assistant — not live Pi inventory.
+ * Every hostname below is a reserved example domain on purpose: a public sample
+ * should not disclose which providers a real deployment actually talks to.
+ */
 export const EXAMPLE_POLICY = new EgressAllowlist([
-  'example-inference.api.example',
-  'gmail.googleapis.com',
-  'oauth2.googleapis.com',
+  'inference.provider.example',
+  'mail.provider.example',
+  'oauth.provider.example',
 ]);
 
 // --- tiny self-check (run with: npx tsx examples/egress-allowlist.ts) ---
 if (import.meta.url === `file://${process.argv[1]}`) {
-  EXAMPLE_POLICY.assertAllowed('https://gmail.googleapis.com/v1/users/me/messages', 'connector.gmail');
+  EXAMPLE_POLICY.assertAllowed('https://mail.provider.example/v1/users/me/messages', 'connector.mail');
   try {
-    EXAMPLE_POLICY.assertAllowed('https://evil.example/exfil', 'connector.gmail');
+    EXAMPLE_POLICY.assertAllowed('https://evil.example/exfil', 'connector.mail');
     console.error('FAIL: expected deny');
     process.exit(1);
   } catch (e) {

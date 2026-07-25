@@ -70,7 +70,9 @@ An offline recovery bundle exists so a dead machine is not permanent loss. Desig
 
 ### 3.5 Honest plaintext exceptions
 
-Some intermediary formats owned by other apps (e.g. a mail client’s on-disk cache used as an ingest bridge) may remain plaintext under **platform disk encryption only**. Those surfaces are **inventoried**, lifecycle-bounded, and excluded from naive whole-disk backup tools that would copy them off-machine uncontrolled.
+Some intermediary formats owned by third-party applications and used as ingest bridges may remain plaintext under **platform disk encryption only**. Pi does not control those formats, so it cannot apply application-layer encryption to them. Those surfaces are **inventoried**, lifecycle-bounded, and excluded from naive whole-disk backup tools that would copy them off-machine uncontrolled.
+
+Publishing the general shape of this exception is deliberate — a security document that claims *everything* is encrypted is not credible. Specific products and paths are omitted.
 
 ---
 
@@ -189,7 +191,7 @@ Some supervised helpers (mail bridges, backup tools, LAN sync for phone exports)
 
 ### 6.4 Telemetry
 
-No third-party telemetry/crash phoning home by construction (absent from allowlist). Dependency updates are pull-based at build time, not silent runtime auto-update of the trusted computing base.
+The daemon performs no third-party telemetry or crash reporting: such destinations are absent from its allowlist, so the property follows from §6.1 rather than from policy. Supervised sidecars (§6.2) run outside that allowlist and are governed by explicit configuration norms instead — the claim is scoped to the daemon, not asserted for the whole system. Dependency updates are pull-based at build time, not silent runtime auto-update of the trusted computing base.
 
 ---
 
